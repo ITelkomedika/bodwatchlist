@@ -115,5 +115,33 @@ export const api = {
 
   return res.json();
 },
+
+async addTaskUpdate(
+  token: string,
+  taskId: number,
+  payload: {
+    content: string;
+    status?: string;
+    mentions?: number[];
+    evidence?: string | null;
+  }
+) {
+  const res = await fetch(`${API_URL}/tasks/${taskId}/updates`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.log("ADD UPDATE ERROR:", text);
+    throw new Error("Failed to add update");
+  }
+
+  return res.json();
+},
    
 };
