@@ -142,26 +142,88 @@ const TaskList: React.FC = () => {
   const handleAddUpdate = async () => {
      if (!selectedTask || !updateText.trim()) return;
 
+     const tempId = `temp-${Date.now()}`;
+
+     const optimisticUpdate = {
+        id: tempId,
+        content: updateText,
+        date: new Date().toISOString(),
+        user: currentUser,
+        evidenceFileName: evidence?.name ?? null,
+        evidenceBase64: evidence?.data ?? null,
+        pending: true,
+      };
+
+      // 1️⃣ Optimistic update ke tasks state
+      setTasks(prev =>
+        prev.map(task =>
+          task.id === selectedTask.id
+            ? {
+                ...task,
+                updates: [optimisticUpdate, ...task.updates],
+              }
+            : task
+        )
+      );
+
   try {
-    await api.addTaskUpdate(token, selectedTask.id, {
+    const savedUpdate = await api.addTaskUpdate(token, selectedTask.id, {
       content: updateText,
       status: targetStatus || undefined,
       mentions,
       evidence: evidence ?? null,
     });
 
-    setUpdateText('');
-    setTargetStatus('');
-    setMentions([]);
-    setEvidence(null);
+    // setUpdateText('');
+    // setTargetStatus('');
+    // setMentions([]);
+    // setEvidence(null);
 
     // optional: refresh task detail / updates list
     // await loadTaskDetail(selectedTask.id);
+    setTasks(prev =>
+      prev.map(task =>
+        task.id === selectedTask.id
+          ? {
+              ...task,
+              updates: task.updates.map(u =>
+                u.id === tempId ? savedUpdate : u
+              ),
+            }
+          : task
+      )
+    );
 
   } catch (err) {
+    setTasks(prev =>
+      prev.map(task =>
+        task.id === selectedTask.id
+          ? {
+              ...task,
+              updates: task.updates.filter(u => u.id !== tempId),
+            }
+          : task
+      )
+    );
     console.error(err);
   }
+     setUpdateText('');
+    setTargetStatus('');
+    setMentions([]);
+    setEvidence(null);
   };
+
+  const fetchTasks = async () => {
+  try {
+    setLoading(true);
+    const tasksData = await api.getTasks(token);
+    setTasks(tasksData);
+  } catch (err) {
+    console.error("FETCH ERROR:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSaveRaci = async () => {
   if (!selectedTask || !tempAccountableId) return;
@@ -173,19 +235,28 @@ const TaskList: React.FC = () => {
       tempAccountableId
     );
 
-    setTasks(prev =>
-      prev.map(task =>
-        task.id === selectedTask.id
-          ? {
-              ...task,
-              raci: {
-                ...task.raci,
-                accountable: updatedTask.primaryAssignee,
-              },
-            }
-          : task
-      )
-    );
+    // setTasks(prev =>
+    //   prev.map(task =>
+    //     task.id === selectedTask.id
+    //       ? {
+    //           ...task,
+    //           raci: {
+    //             ...task.raci,
+    //             accountable: updatedTask.primaryAssignee,
+    //           },
+    //           updates: updatedTask.updates.map((u: any) => ({
+    //             id: u.id,
+    //             content: u.content,
+    //             date: u.created_at,
+    //             user: u.user,
+    //             evidenceFileName: u.evidence_path,
+    //           })),
+    //         }
+    //       : task
+    //   )
+    // );
+
+    await fetchTasks();
 
     setIsEditingRaci(false);
     setTempAccountableId(null);
@@ -194,7 +265,7 @@ const TaskList: React.FC = () => {
     alert("Gagal update accountable");
   }
 };
-
+  
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
       case TaskStatus.CLOSED: return 'bg-slate-200 text-slate-800 border-slate-300';
@@ -302,77 +373,77 @@ const TaskList: React.FC = () => {
                </div>
 
                 <div className="w-full lg:w-[32%] bg-slate-50/50 p-6 space-y-8 self-start max-h-fit">
-                <div className="space-y-3">
-  <div className="flex items-center justify-between">
-    <h4 className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
-      Accountable (A)
-    </h4>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                        Accountable (A)
+                      </h4>
 
-    {(currentUser.role === 'SECRETARY' ||
-      currentUser.id === selectedTask.raci.accountable.id) && (
-      <button
-        onClick={() => {
-          setTempAccountableId(selectedTask.raci.accountable.id);
-          setIsEditingRaci(true);
-        }}
-        className="text-[8px] font-black text-blue-700 uppercase underline"
-      >
-        Update
-      </button>
-    )}
-  </div>
+                      {(currentUser.role === 'SECRETARY' ||
+                        currentUser.id === selectedTask.raci.accountable.id) && (
+                        <button
+                          onClick={() => {
+                            setTempAccountableId(selectedTask.raci.accountable.id);
+                            setIsEditingRaci(true);
+                          }}
+                          className="text-[8px] font-black text-blue-700 uppercase underline"
+                        >
+                          Update
+                        </button>
+                      )}
+                    </div>
 
-  {isEditingRaci ? (
-    <div className="space-y-3 animate-in fade-in duration-200">
-      <select
-        className="w-full p-2.5 rounded-xl border border-slate-200 text-[10px] font-bold"
-        value={tempAccountableId ?? ""}
-        onChange={(e) => setTempAccountableId(Number(e.target.value))}
-      >
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.name}
-          </option>
-        ))}
-      </select>
+                    {isEditingRaci ? (
+                      <div className="space-y-3 animate-in fade-in duration-200">
+                        <select
+                          className="w-full p-2.5 rounded-xl border border-slate-200 text-[10px] font-bold"
+                          value={tempAccountableId ?? ""}
+                          onChange={(e) => setTempAccountableId(Number(e.target.value))}
+                        >
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name}
+                            </option>
+                          ))}
+                        </select>
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => {
-            setIsEditingRaci(false);
-            setTempAccountableId(null);
-          }}
-          className="w-1/2 py-2 bg-slate-200 text-slate-700 rounded-lg text-[8px] font-black uppercase"
-        >
-          Batal
-        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setIsEditingRaci(false);
+                              setTempAccountableId(null);
+                            }}
+                            className="w-1/2 py-2 bg-slate-200 text-slate-700 rounded-lg text-[8px] font-black uppercase"
+                          >
+                            Batal
+                          </button>
 
-        <button
-          onClick={handleSaveRaci}
-          className="w-1/2 py-2 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase"
-        >
-          Selesai Edit
-        </button>
-      </div>
-    </div>
-  ) : (
-    <div className="flex items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-      <img
-        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedTask.raci.accountable.avatar_seed}`}
-        className="w-8 h-8 rounded-lg"
-        alt=""
-      />
-      <div className="min-w-0">
-        <p className="text-[10px] font-black text-slate-900 truncate">
-          {selectedTask.raci.accountable.name}
-        </p>
-        <p className="text-[7px] font-bold text-blue-700 uppercase">
-          Primary Owner
-        </p>
-      </div>
-    </div>
-  )}
-</div>
+                          <button
+                            onClick={handleSaveRaci}
+                            className="w-1/2 py-2 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase"
+                          >
+                            Selesai Edit
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+                        <img
+                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedTask.raci.accountable.avatar_seed}`}
+                          className="w-8 h-8 rounded-lg"
+                          alt=""
+                        />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black text-slate-900 truncate">
+                            {selectedTask.raci.accountable.name}
+                          </p>
+                          <p className="text-[7px] font-bold text-blue-700 uppercase">
+                            Primary Owner
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   {/* <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Accountable (A)</h4>
@@ -443,7 +514,7 @@ const TaskList: React.FC = () => {
                     </div>
                   )}
                </div>
-            </div>
+          </div>
           {selectedTask.status !== TaskStatus.CLOSED && canUpdate && (
                   <div className="p-4 lg:p-6 border-t border-slate-100 bg-white relative">
 
