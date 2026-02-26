@@ -93,6 +93,27 @@ export const api = {
     }
 
     return res.json();
-   }
+   },
+
+   async updateRaci(token: string, taskId: number, accountableId: number) {
+  const res = await fetch(`${API_URL}/tasks/${taskId}/raci`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      accountableId,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.log("UPDATE RACI ERROR:", text);
+    throw new Error('Failed to update RACI');
+  }
+
+  return res.json();
+},
    
 };
