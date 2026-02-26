@@ -140,26 +140,27 @@ const TaskList: React.FC = () => {
   };
 
   const handleAddUpdate = async () => {
-    if (!selectedTask || !updateText.trim()) return;
+     if (!selectedTask || !updateText.trim()) return;
 
-    await fetch(`${import.meta.env.VITE_API_URL}/tasks/${selectedTask.id}/update`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        content: updateText,
-        status: targetStatus || undefined,
-        mentions,
-        evidence,
-      }),
+  try {
+    await api.addTaskUpdate(token, selectedTask.id, {
+      content: updateText,
+      status: targetStatus || undefined,
+      mentions,
+      evidence: evidence ?? null,
     });
 
     setUpdateText('');
     setTargetStatus('');
     setMentions([]);
     setEvidence(null);
+
+    // optional: refresh task detail / updates list
+    // await loadTaskDetail(selectedTask.id);
+
+  } catch (err) {
+    console.error(err);
+  }
   };
 
   const handleSaveRaci = async () => {
