@@ -4,6 +4,9 @@ import { TaskStatus, type RACIMatrix, type Task, type User } from '../types';
 import { api } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 
+const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
 const TaskList: React.FC = () => {
   const { user: currentUser } = useAuth();
   const [tempAccountableId, setTempAccountableId] = useState<number | null>(null);
@@ -67,7 +70,10 @@ const TaskList: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [updateText, setUpdateText] = useState('');
   const [targetStatus, setTargetStatus] = useState<TaskStatus | ''>('');
-  const [evidence, setEvidence] = useState<{ data: string, name: string } | null>(null);
+  const [evidence, setEvidence] = useState<{
+    url: string;
+    name: string;
+  } | null>(null);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [mentions, setMentions] = useState<string[]>([]);
   const [showExtensionForm, setShowExtensionForm] = useState(false);
@@ -75,6 +81,7 @@ const TaskList: React.FC = () => {
   const [reqDate, setReqDate] = useState('');
   const [reqReason, setReqReason] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -108,12 +115,40 @@ const TaskList: React.FC = () => {
     inputRef.current?.focus();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setEvidence({ data: reader.result as string, name: file.name });
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File maksimal 5MB");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", UPLOAD_PRESET);
+
+    try {
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const data = await res.json();
+
+      setEvidence({
+        url: data.secure_url,
+        name: file.name,
+      });
+
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Upload gagal");
     }
   };
 
@@ -147,10 +182,9 @@ const TaskList: React.FC = () => {
      const optimisticUpdate = {
         id: tempId,
         content: updateText,
-        date: new Date().toISOString(),
+        created_at: new Date().toISOString(),
         user: currentUser,
-        evidenceFileName: evidence?.name ?? null,
-        evidenceBase64: evidence?.data ?? null,
+        evidence_path: evidence?.url ?? null, // sementara base64
         pending: true,
       };
 
@@ -166,51 +200,51 @@ const TaskList: React.FC = () => {
         )
       );
 
-  try {
-    const savedUpdate = await api.addTaskUpdate(token, selectedTask.id, {
-      content: updateText,
-      status: targetStatus || undefined,
-      mentions,
-      evidence: evidence ?? null,
-    });
+    try {
+      const savedUpdate = await api.addTaskUpdate(token, selectedTask.id, {
+        content: updateText,
+        status: targetStatus || undefined,
+        mentions,
+        evidence: evidence?.url ?? null, // ✅ kirim URL saja
+      });
 
-    // setUpdateText('');
-    // setTargetStatus('');
-    // setMentions([]);
-    // setEvidence(null);
+      // setUpdateText('');
+      // setTargetStatus('');
+      // setMentions([]);
+      // setEvidence(null);
 
-    // optional: refresh task detail / updates list
-    // await loadTaskDetail(selectedTask.id);
-    setTasks(prev =>
-      prev.map(task =>
-        task.id === selectedTask.id
-          ? {
-              ...task,
-              updates: task.updates.map(u =>
-                u.id === tempId ? savedUpdate : u
-              ),
-            }
-          : task
-      )
-    );
+      // optional: refresh task detail / updates list
+      // await loadTaskDetail(selectedTask.id);
+      setTasks(prev =>
+        prev.map(task =>
+          task.id === selectedTask.id
+            ? {
+                ...task,
+                updates: task.updates.map(u =>
+                  u.id === tempId ? savedUpdate : u
+                ),
+              }
+            : task
+        )
+      );
 
-  } catch (err) {
-    setTasks(prev =>
-      prev.map(task =>
-        task.id === selectedTask.id
-          ? {
-              ...task,
-              updates: task.updates.filter(u => u.id !== tempId),
-            }
-          : task
-      )
-    );
-    console.error(err);
-  }
-     setUpdateText('');
-    setTargetStatus('');
-    setMentions([]);
-    setEvidence(null);
+    } catch (err) {
+      setTasks(prev =>
+        prev.map(task =>
+          task.id === selectedTask.id
+            ? {
+                ...task,
+                updates: task.updates.filter(u => u.id !== tempId),
+              }
+            : task
+        )
+      );
+      console.error(err);
+    }
+      setUpdateText('');
+      setTargetStatus('');
+      setMentions([]);
+      setEvidence(null);
   };
 
   const fetchTasks = async () => {
@@ -349,10 +383,10 @@ const TaskList: React.FC = () => {
                         <div className={`flex-1 p-5 rounded-[24px] border ${update.content.includes('🚨') ? 'bg-red-50 border-red-200' : update.user.id === selectedTask.raci.accountable.id ? 'bg-blue-50/50 border-blue-200' : 'bg-white border-slate-100'}`}>
                           <div className="flex justify-between items-center mb-1">
                             <span className={`text-[10px] font-black ${update.content.includes('🚨') ? 'text-red-800' : 'text-slate-900'}`}>{update.user.name}</span>
-                            <span className="text-[8px] font-bold text-slate-400">{new Date(update.date).toLocaleDateString()}</span>
+                            <span className="text-[8px] font-bold text-slate-400">{new Date(update.created_at).toLocaleDateString()}</span>
                           </div>
                           <p className={`text-xs leading-relaxed font-medium ${update.content.includes('🚨') ? 'text-red-900' : 'text-slate-800'}`}>{update.content}</p>
-                          {update.evidenceFileName && (
+                          {/* {update.evidenceFileName && (
                             <div className="mt-4 flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
                                <span className="text-[9px] font-bold text-slate-700 truncate max-w-[150px] sm:max-w-[250px]">📎 {update.evidenceFileName}</span>
                                <button 
@@ -361,6 +395,21 @@ const TaskList: React.FC = () => {
                                >
                                  View (Lihat)
                                </button>
+                            </div>
+                          )} */}
+
+                          {update.evidence_path && (
+                            <div className="mt-4 flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                              <span className="text-[9px] font-bold text-slate-700 truncate max-w-[150px] sm:max-w-[250px]">
+                                📎 Lampiran
+                              </span>
+
+                              <button
+                                onClick={() => setPreviewImage(update.evidence_path)}
+                                className="text-[9px] font-black text-blue-700 uppercase hover:underline"
+                              >
+                                View (Lihat)
+                              </button>
                             </div>
                           )}
                         </div>
@@ -516,47 +565,51 @@ const TaskList: React.FC = () => {
                </div>
           </div>
           {selectedTask.status !== TaskStatus.CLOSED && canUpdate && (
-                  <div className="p-4 lg:p-6 border-t border-slate-100 bg-white relative">
-
-                    <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
-
-                    <div className="flex flex-col gap-4">
-                      <div className="flex gap-2">
-                        {statusOptions.map(s => (
-                          <button 
-                            key={s}
-                            onClick={() => setTargetStatus(s)}
-                            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase border ${
-                              targetStatus === s 
-                                ? 'bg-slate-900 text-white border-slate-900' 
-                                : 'bg-white text-slate-600 border-slate-300'
-                            }`}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex gap-3">
-                        <input
-                          ref={inputRef}
-                          type="text"
-                          value={updateText}
-                          onChange={handleTextChange}
-                          placeholder="Tulis update progres..."
-                          className="flex-1 px-6 py-4 rounded-2xl bg-slate-50 border"
-                        />
-
-                        <button
+              <div className="p-4 lg:p-6 border-t border-slate-100 bg-white relative">
+                {showMentionPicker && (
+                  <div className="absolute bottom-full left-4 sm:left-6 mb-2 w-[calc(100%-32px)] sm:w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60] animate-in slide-in-from-bottom-2 duration-200">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-3 py-2 border-b border-slate-50 mb-2">Mention Unit/Divisi</p>
+                    {users.filter(u => u.id !== currentUser.id).map(u => (
+                      <button key={u.id} onClick={() => addMention(u)} className="w-full flex items-center gap-3 p-2 hover:bg-blue-50 rounded-xl transition-all text-left">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.avatar_seed}`} className="w-6 h-6 rounded-md bg-slate-50" />
+                        <span className="text-[10px] font-bold text-slate-700">{u.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 w-full sm:w-auto">
+                      {statusOptions.map(s => (
+                        <button 
+                          key={s} 
+                          onClick={() => setTargetStatus(s)} 
+                          className={`flex-shrink-0 px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all border ${targetStatus === s ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => fileInputRef.current?.click()} className={`w-full sm:w-auto px-4 py-2 rounded-xl text-[9px] font-black uppercase border transition-all ${evidence ? 'bg-blue-50 text-blue-800 border-blue-300 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-300'}`}>
+                      {evidence ? 'File Terlampir' : '📎 Lampirkan Progres'}
+                    </button>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input 
+                      ref={inputRef} type="text" placeholder="Tulis update progres... ketik @ untuk mention" value={updateText} onChange={handleTextChange} 
+                      className="flex-1 px-4 sm:px-6 py-4 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-100 transition-all text-slate-900" 
+                    />
+                    <button
                           onClick={handleAddUpdate}
                           className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs"
                         >
                           Kirim Update
-                        </button>
-                      </div>
-                    </div>
+                    </button>
                   </div>
-                )}
+                </div>
+              </div>
+            )}
         </>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-10 sm:p-20 text-center bg-slate-50/20">
