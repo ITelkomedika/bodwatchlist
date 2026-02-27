@@ -16,6 +16,7 @@ const TaskList: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   const token = localStorage.getItem('bt_token') || '';
+  const [isUploading, setIsUploading] = useState(false);
 
   // ============================
   // FETCH DATA FROM API
@@ -131,6 +132,7 @@ const TaskList: React.FC = () => {
     formData.append("upload_preset", UPLOAD_PRESET);
 
     try {
+      setIsUploading(true); // ⬅️ mulai upload
       const res = await fetch(
         `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
         {
@@ -149,6 +151,8 @@ const TaskList: React.FC = () => {
     } catch (err) {
       console.error("Upload error:", err);
       alert("Upload gagal");
+    } finally {
+      setIsUploading(false); // ⬅️ selesai upload (sukses / gagal)
     }
   };
 
@@ -601,11 +605,24 @@ const TaskList: React.FC = () => {
                       className="flex-1 px-4 sm:px-6 py-4 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-100 transition-all text-slate-900" 
                     />
                     <button
+                      onClick={handleAddUpdate}
+                      disabled={isUploading}
+                      className={`px-8 py-4 rounded-2xl font-black text-xs transition-all
+                        ${
+                          isUploading
+                            ? "bg-slate-400 text-white cursor-not-allowed"
+                            : "bg-slate-900 text-white hover:bg-slate-800"
+                        }
+                      `}
+                    >
+                      {isUploading ? "Uploading..." : "Kirim Update"}
+                    </button>
+                    {/* <button
                           onClick={handleAddUpdate}
                           className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs"
                         >
                           Kirim Update
-                    </button>
+                    </button> */}
                   </div>
                 </div>
               </div>
